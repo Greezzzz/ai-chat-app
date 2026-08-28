@@ -2,7 +2,12 @@ import 'dart:math';
 
 import 'package:dio/dio.dart';
 
-/// Generates a client-side trace id for the `X-Client-Trace-Id` header.
+/// Generates a client-side trace id for the `X-Trace-Id` header.
+///
+/// The backend's `TraceMiddleware` reads `X-Trace-id` from incoming requests
+/// and uses it as the trace id in its logs (echoed back in the response).
+/// Sending this header lets the backend correlate a request chain from this
+/// app end-to-end.
 ///
 /// Format: `mobile-chat-<uuid4>-<timestampNanos>`
 /// - `uuid4`: random v4 UUID (no extra dependency, `Random.secure()`).
@@ -35,12 +40,12 @@ class ClientTraceId {
   }
 }
 
-/// Adds an `X-Client-Trace-Id` header to every outgoing request so the
-/// backend can correlate a request chain in its logs.
+/// Adds an `X-Trace-Id` header to every outgoing request so the backend can
+/// correlate a request chain in its logs.
 class ClientTraceInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    options.headers['X-Client-Trace-Id'] = ClientTraceId.generate();
+    options.headers['X-Trace-Id'] = ClientTraceId.generate();
     handler.next(options);
   }
 }
