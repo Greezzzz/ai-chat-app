@@ -77,8 +77,9 @@ Detail lengkap: `developer.md` section 4.3.
   users/conversations/messages), `SessionStore` (SharedPreferences),
   `SeedData` (John Doe + 4 conversations), storage providers
 - [x] **Auth feature lengkap** — domain (User, AuthRepository, usecases),
-  data (`AuthMockDataSource` + `AuthRemoteDataSource` stub + impl),
-  presentation (`AuthController`, Splash/Login/Register + validators)
+  data (`AuthMockDataSource` + `AuthRemoteDataSource` lengkap: register
+  auto-login, login, logout, me + token refresh), presentation
+  (`AuthController`, Splash/Login/Register + validators)
 - [x] **Router** — `core/router/app_router.dart`: GoRouter dengan auth
   redirect (splash → login/chat), protected `/chat/*`
 - [x] **Chat feature lengkap** — domain (Conversation, Message, usecases,
@@ -88,25 +89,39 @@ Detail lengkap: `developer.md` section 4.3.
 - [x] **Streaming** — mock stream per-kata, delay configurable, thinking
   delay, canned responses (deteksi kata kunci), persist incremental
 - [x] **Remote chat API (ai-backend-v2)** — `ChatRemoteDataSource` lengkap:
-  `GET /api/chat/conversations` (list), `GET /api/chat/conversations/{id}`,
-  `POST /api/chat/stream` (SSE `data: {"delta"}` + `[DONE]`), auth header Bearer,
-  mapping error contract `{code, message, details}`. Backend pegang persistence
-  (repo skip Hive via `persistsLocally`). New chat di remote: backend buat
-  conversation saat pesan pertama, client discover id via re-list setelah
-  stream selesai
+  `GET /api/chat/conversations` (list), `GET /api/chat/conversations/{id}`
+  (metadata + **riwayat pesan**), `POST /api/chat/stream` (SSE
+  `data: {"delta"}` + `[DONE]`), auth header Bearer, mapping error contract
+  `{code, message, details}`. Backend pegang persistence (repo skip Hive via
+  `persistsLocally`). New chat di remote: backend buat conversation saat pesan
+  pertama, client discover id via re-list **hanya** setelah pesan pertama
+  new chat selesai (bukan tiap pesan)
 - [x] **Mock chat per-user** — `MockChatDataSource._currentUserId` baca dari
   session (`SessionStore`), bukan hardcoded `'user_001'`
 - [x] **API base URL helper** — `core/utils/api_base_url.dart`: Android emulator
   → `10.0.2.2`, platform lain → `127.0.0.1` (dipakai auth + chat remote)
+- [x] **Client trace id** — `core/network/client_trace.dart`: header
+  `X-Client-Trace-Id` (`mobile-chat-<uuid4>-<nanos>`) di semua request
+  auth + chat via Dio interceptor, untuk korelasi log end-to-end
 - [x] **History** — drawer dengan group Today/Yesterday/Older, select
   conversation, continue chat, persist Hive
-- [x] **Test** — 15 test lolos (3 auth widget + 1 chat widget full flow +
-  unit test title generator & streaming + **5 unit test remote chat**:
-  SSE parsing, error event, token requirement, list mapping, persistsLocally)
-  + **1 integration test E2E Android hijau** di `emulator-5554`
-  (`integration_test/app_test.dart`: register → restore session → login →
-  chat → streaming → history)
+- [x] **Streaming stabil** — throttle rebuild UI (80ms) di `ChatController`
+  supaya respons panjang tidak freeze (hindari O(n²) `toString()` + copy list
+  per chunk); chat singkat tidak stuck (konten penuh di-set di `onDone`)
+- [x] **Reset chat state saat logout** — `ChatController.reset()` dipanggil
+  dari `main.dart` (`ref.listen` saat auth jadi `unauthenticated`) + tombol
+  logout, supaya login berikutnya tidak auto-select conversation lama
+- [x] **Logout button** — di drawer (ikon + teks merah), panggil
+  `AuthController.logout()` → redirect ke login
+- [x] **Test** — 22 test lolos (auth widget + chat widget flow + remote chat
+  unit test: SSE parsing, error event, token requirement, list mapping,
+  message history, persistsLocally + title generator/streaming + UserModel
+  int-id parsing + ClientTraceId) + **1 integration test E2E Android hijau**
+  di `emulator-5554` (`integration_test/app_test.dart`: register → restore
+  session → login → chat → streaming → history)
 - [x] **Docs** — `developer.md` (running project), `prd.md` (acuan)
+- [x] **GitHub repo** — https://github.com/Greezzzz/ai-chat-app (public,
+  branch `master`), di-push via `gh repo create`
 
 ### ⬜ Belum / Next Steps
 
@@ -121,8 +136,6 @@ Detail lengkap: `developer.md` section 4.3.
   berfungsi (V1.1)
 - [ ] **Retry failed message** — message status `error` sudah ada, tombol
   retry belum
-- [ ] **Logout button di UI** — `AuthController.logout()` sudah ada, tapi
-  drawer/belum ada tombol logout untuk user keluar dari session
 - [ ] **Markdown rendering** untuk message AI (V1.1, opsional)
 - [ ] **coba `flutter run -d chrome`** untuk melihat UI sebenarnya (belum
   pernah dijalankan visual)
