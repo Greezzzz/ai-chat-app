@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 
 import '../../../../config/environment.dart';
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/network/client_trace.dart';
 import '../../../../core/storage/session_store.dart';
 import '../../../../core/utils/api_base_url.dart';
 import '../../domain/entities/conversation.dart';
@@ -23,13 +24,13 @@ import 'chat_data_source.dart';
 class ChatRemoteDataSource implements ChatDataSource {
   ChatRemoteDataSource(this._session, {Dio? dio, String? baseUrl})
       : _dio = dio ??
-            Dio(
+            (Dio(
               BaseOptions(
                 connectTimeout: _timeout,
                 receiveTimeout: _timeout,
                 sendTimeout: _timeout,
               ),
-            ),
+            )..interceptors.add(ClientTraceInterceptor())),
         _baseUrl = baseUrl ?? _resolveBaseUrl();
 
   final SessionStore _session;
