@@ -92,7 +92,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         },
         onLogout: () {
           _drawerKey.currentState?.closeDrawer();
-          // Logs out and clears the session; the router redirects to /login.
+          // Clear chat state (selected conversation, messages) so the next
+          // login starts fresh, then log out (router redirects to /login).
+          notifier.reset();
           ref.read(authControllerProvider.notifier).logout();
         },
       ),

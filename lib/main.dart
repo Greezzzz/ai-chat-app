@@ -7,6 +7,7 @@ import 'core/storage/seed_data.dart';
 import 'core/storage/storage_providers.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/providers/auth_controller.dart';
+import 'features/chat/presentation/providers/chat_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,6 +41,11 @@ class _ChatAppState extends ConsumerState<ChatApp> {
     // Re-run the router redirect whenever auth state changes.
     ref.listen<AuthState>(authControllerProvider, (previous, next) {
       currentAuthState = next;
+      // Leaving the session (logout / expiry / failed restore) must clear the
+      // chat state so the next login starts fresh — no stale conversation.
+      if (next.status == AuthStatus.unauthenticated) {
+        ref.read(chatControllerProvider.notifier).reset();
+      }
       _router.refresh();
     });
 

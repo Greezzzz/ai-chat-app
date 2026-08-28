@@ -287,6 +287,14 @@ class ChatController extends StateNotifier<ChatState> {
     await loadConversations();
   }
 
+  /// Clears all chat state (used on logout so a new login doesn't inherit
+  /// the previous session's selected conversation).
+  Future<void> reset() async {
+    await _cancelStream();
+    _streamBuffer.clear();
+    state = const ChatState();
+  }
+
   Future<void> _cancelStream() async {
     _streamThrottle?.cancel();
     _streamThrottle = null;
