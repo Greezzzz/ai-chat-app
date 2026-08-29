@@ -235,8 +235,18 @@ class ChatController extends StateNotifier<ChatState> {
       status: MessageStatus.streaming,
     );
     _streamBuffer.clear();
+
+    // Drop the last assistant message if it errored (e.g. stream timeout).
+    // It was never persisted server-side, so the new attempt replaces it
+    // instead of stacking a failed bubble on top of the previous one.
+    final messages = state.messages;
+    final baseMessages = messages.isNotEmpty &&
+            messages.last.status == MessageStatus.error
+        ? messages.take(messages.length - 1).toList()
+        : messages;
+
     state = state.copyWith(
-      messages: [...state.messages, userMessage, assistantMessage],
+      messages: [...baseMessages, userMessage, assistantMessage],
       isStreaming: true,
       clearError: true,
     );

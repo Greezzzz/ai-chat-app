@@ -233,6 +233,69 @@ void main() {
     expect(lastBody!['conversation_id'], isNull);
     expect(lastBody!['document_id'], 7);
   });
+
+  test('aborts a stalled stream after the idle timeout', () async {
+    final session = await _session();
+    // Adapter sends one delta then stays silent forever (never closes).
+    final dio = Dio()..httpClientAdapter = _StalledSseAdapter(
+      'data: {"delta": "sebagian"}\n\n',
+    );
+
+    final ds = ChatRemoteDataSource(
+      session,
+      dio: dio,
+      idleTimeout: const Duration(milliseconds: 100),
+    );
+
+    final chunks = <String>[];
+    await expectLater(
+      () async {
+        await for (final c in ds.streamChat(
+          conversationId: '12',
+          message: 'halo',
+        )) {
+          chunks.add(c);
+        }
+      }(),
+      throwsA(isA<NetworkException>()),
+    );
+    expect(chunks, ['sebagian']);
+  });
+}
+
+/// Adapter that emits the given SSE body then never closes the stream
+/// (simulates a stalled server/provider).
+class _StalledSseAdapter implements HttpClientAdapter {
+  _StalledSseAdapter(this.sseBody);
+
+  final String sseBody;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    final bytes = utf8.encode(sseBody);
+    final controller = StreamController<Uint8List>();
+    var i = 0;
+    Timer.periodic(const Duration(milliseconds: 1), (t) {
+      if (i < bytes.length) {
+        final end = (i + 8 > bytes.length) ? bytes.length : i + 8;
+        controller.add(Uint8List.fromList(bytes.sublist(i, end)));
+        i = end;
+      } else {
+        // Keep the stream open — never close, simulating a stall.
+        t.cancel();
+      }
+    });
+    return ResponseBody(controller.stream, 200, headers: {
+      Headers.contentTypeHeader: ['text/event-stream'],
+    });
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 /// Adapter with a per-request handler so tests can inspect request options

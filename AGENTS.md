@@ -108,7 +108,10 @@ Detail lengkap: `developer.md` section 4.3.
   conversation, continue chat, persist Hive
 - [x] **Streaming stabil** — throttle rebuild UI (80ms) di `ChatController`
   supaya respons panjang tidak freeze (hindari O(n²) `toString()` + copy list
-  per chunk); chat singkat tidak stuck (konten penuh di-set di `onDone`)
+  per chunk); chat singkat tidak stuck (konten penuh di-set di `onDone`);
+  **idle timeout 30s** di `ChatRemoteDataSource` (`Stream.timeout`) — kalau
+  server/LLM diam (provider lama mikir), stream di-abort → error bubble →
+  kirim ulang otomatis menggantikan pesan yang gagal (tidak menumpuk)
 - [x] **Reset chat state saat logout** — `ChatController.reset()` dipanggil
   dari `main.dart` (`ref.listen` saat auth jadi `unauthenticated`) + tombol
   logout, supaya login berikutnya tidak auto-select conversation lama

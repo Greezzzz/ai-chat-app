@@ -23,8 +23,13 @@ import 'chat_data_source.dart';
 ///   re-listing conversations after the stream finishes.
 /// - Backend conversation/user ids are integers; the app model uses strings.
 class ChatRemoteDataSource implements ChatDataSource {
-  ChatRemoteDataSource(this._session, {Dio? dio, String? baseUrl})
-      : _dio = dio ??
+  ChatRemoteDataSource(
+    this._session, {
+    Dio? dio,
+    String? baseUrl,
+    Duration? idleTimeout,
+  })  : _idleTimeout = idleTimeout ?? _streamIdleTimeout,
+        _dio = dio ??
             (Dio(
               BaseOptions(
                 connectTimeout: _timeout,
@@ -37,9 +42,15 @@ class ChatRemoteDataSource implements ChatDataSource {
   final SessionStore _session;
   final Dio _dio;
   final String _baseUrl;
+  final Duration _idleTimeout;
 
   static const _timeout = Duration(seconds: 20);
   static const _streamTimeout = Duration(seconds: 60);
+
+  /// Max silence between SSE events. If the server/LLM stalls longer than
+  /// this (e.g. the provider takes too long to respond), the stream is
+  /// aborted so the UI doesn't hang on a cursor forever.
+  static const _streamIdleTimeout = Duration(seconds: 30);
 
   @override
   bool get persistsLocally => false;
@@ -178,7 +189,10 @@ class ChatRemoteDataSource implements ChatDataSource {
           .bind(stream)
           .transform(const LineSplitter());
 
-      await for (final line in lines) {
+      // Abort the stream if the server stays silent longer than the idle
+      // timeout (provider thinking, stalled connection, etc.). Without this,
+      // a stalled SSE stream never completes and the UI hangs on the cursor.
+      await for (final line in lines.timeout(_idleTimeout)) {
         if (!line.startsWith('data:')) continue;
         final payload = line.substring(5).trim();
         if (payload.isEmpty) continue;
@@ -197,6 +211,10 @@ class ChatRemoteDataSource implements ChatDataSource {
           }
         }
       }
+    } on TimeoutException {
+      throw const NetworkException(
+        'Respons AI terlalu lama. Silakan coba lagi.',
+      );
     } on DioException catch (e) {
       throw _mapError(e, fallback: 'Gagal terhubung ke server.');
     }
