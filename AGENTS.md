@@ -100,10 +100,10 @@ Detail lengkap: `developer.md` section 4.3.
   session (`SessionStore`), bukan hardcoded `'user_001'`
 - [x] **API base URL helper** — `core/utils/api_base_url.dart`: Android emulator
   → `10.0.2.2`, platform lain → `127.0.0.1` (dipakai auth + chat remote)
-- [x] **Client trace id** — `core/network/client_trace.dart`: header
-  `X-Trace-Id` (`mobile-chat-<uuid4>-<nanos>`) di semua request auth + chat
-  via Dio interceptor; backend `TraceMiddleware` membaca header ini sebagai
-  trace id log (korelasi end-to-end)
+- [x] **Client trace id** — `core/network/client_trace.dart`: kirim header
+  W3C `traceparent` (`00-<traceId32hex>-<spanId16hex>-01`) + `X-Trace-Id`
+  (trace id yang sama) di semua request auth + chat via Dio interceptor;
+  backend OTel mengadopsi trace id klien → bisa dicari di Jaeger
 - [x] **History** — drawer dengan group Today/Yesterday/Older, select
   conversation, continue chat, persist Hive
 - [x] **Streaming stabil** — throttle rebuild UI (80ms) di `ChatController`
