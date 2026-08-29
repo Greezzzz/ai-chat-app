@@ -235,7 +235,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     if (chat.messages.isEmpty) {
       return EmptyChatState(
-        onSuggestionSelected: (text) => notifier.sendMessage(text),
         // Only allow attaching a context to a brand-new, not-yet-started chat.
         onAddContext: chat.currentConversationId == null
             ? _showAddContext

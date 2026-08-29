@@ -3,28 +3,22 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/neo_theme.dart';
 
-/// Empty chat state with suggestion chips (PRD §17).
+/// Empty chat state for a brand-new chat (PRD §17).
+///
+/// Shows a single action: attach a RAG context document. No suggestion
+/// chips — they looked like prompts and clashed with the context action.
 class EmptyChatState extends StatelessWidget {
   const EmptyChatState({
     super.key,
-    required this.onSuggestionSelected,
     this.onAddContext,
     this.pendingDocumentTitle,
   });
-
-  final ValueChanged<String> onSuggestionSelected;
 
   /// Shown when the user can attach a RAG context to a brand-new chat.
   final VoidCallback? onAddContext;
 
   /// Title of a pending context document (shown as a chip when set).
   final String? pendingDocumentTitle;
-
-  static const _suggestions = [
-    'Explain quantum computing',
-    'Write a product description',
-    'Help me debug code',
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -65,28 +59,35 @@ class EmptyChatState extends StatelessWidget {
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(height: AppSpacing.xl),
-            for (final suggestion in _suggestions) ...[
-              _SuggestionChip(
-                label: suggestion,
-                onTap: () => onSuggestionSelected(suggestion),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-            ],
             if (onAddContext != null) ...[
-              const SizedBox(height: AppSpacing.lg),
+              const SizedBox(height: AppSpacing.xl),
               if (pendingDocumentTitle != null) ...[
-                Text(
-                  '📎 $pendingDocumentTitle',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: neo.ink,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                    vertical: AppSpacing.sm,
+                  ),
+                  decoration: BoxDecoration(
+                    color: neo.accent.withValues(alpha: 0.25),
+                    borderRadius:
+                        BorderRadius.circular(AppSpacing.radiusPill),
+                    border: Border.all(
+                      color: neo.border,
+                      width: neo.borderWidth,
+                    ),
+                  ),
+                  child: Text(
+                    '📎 $pendingDocumentTitle',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: neo.ink,
+                    ),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.sm),
               ],
-              _SuggestionChip(
+              _ActionButton(
                 label: pendingDocumentTitle != null
                     ? 'Ganti konteks'
                     : 'Add context',
@@ -100,8 +101,8 @@ class EmptyChatState extends StatelessWidget {
   }
 }
 
-class _SuggestionChip extends StatelessWidget {
-  const _SuggestionChip({required this.label, required this.onTap});
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
@@ -111,26 +112,33 @@ class _SuggestionChip extends StatelessWidget {
     final neo = Theme.of(context).extension<NeoTheme>()!;
 
     return Material(
-      color: neo.surface,
+      color: neo.accent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
         side: BorderSide(color: neo.border, width: neo.borderWidth),
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
-        child: Container(
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        child: Padding(
           padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.sm,
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.sm + 4,
           ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: neo.ink,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.attach_file_rounded, size: 18),
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: neo.ink,
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -68,11 +68,13 @@ class ChatState {
     PendingDocument? pendingDocument,
     bool clearError = false,
     bool clearPendingDocument = false,
+    bool clearCurrentConversation = false,
   }) {
     return ChatState(
       conversations: conversations ?? this.conversations,
-      currentConversationId:
-          currentConversationId ?? this.currentConversationId,
+      currentConversationId: clearCurrentConversation
+          ? null
+          : (currentConversationId ?? this.currentConversationId),
       messages: messages ?? this.messages,
       isLoadingConversations: isLoadingConversations ?? this.isLoadingConversations,
       isLoadingMessages: isLoadingMessages ?? this.isLoadingMessages,
@@ -139,11 +141,15 @@ class ChatController extends StateNotifier<ChatState> {
     );
     try {
       final messages = await _getMessages(id);
+      // Guard against races: if the user switched away (new chat / another
+      // conversation) while messages were loading, don't clobber that state.
+      if (state.currentConversationId != id) return;
       state = state.copyWith(
         messages: messages,
         isLoadingMessages: false,
       );
     } on AppException catch (e) {
+      if (state.currentConversationId != id) return;
       state = state.copyWith(
         isLoadingMessages: false,
         errorMessage: e.message,
@@ -165,7 +171,7 @@ class ChatController extends StateNotifier<ChatState> {
     } else {
       // Remote: the backend creates the conversation on the first message.
       state = state.copyWith(
-        currentConversationId: null,
+        clearCurrentConversation: true,
         messages: const [],
         clearError: true,
         clearPendingDocument: true,
@@ -387,8 +393,11 @@ class ChatController extends StateNotifier<ChatState> {
   Future<void> _cancelStream() async {
     _streamThrottle?.cancel();
     _streamThrottle = null;
-    await _streamSub?.cancel();
+    // Fire-and-forget: cancelling a completed/foreign subscription should
+    // never block navigation (some adapters' cancel can hang).
+    final sub = _streamSub;
     _streamSub = null;
+    unawaited(sub?.cancel());
   }
 
   @override

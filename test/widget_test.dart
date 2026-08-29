@@ -19,6 +19,7 @@ import 'package:chat_app/features/chat/domain/entities/conversation.dart';
 import 'package:chat_app/features/chat/domain/entities/message.dart';
 import 'package:chat_app/features/chat/domain/repositories/chat_repository.dart';
 import 'package:chat_app/features/chat/presentation/providers/chat_controller.dart';
+import 'package:chat_app/features/chat/presentation/widgets/conversation_tile.dart';
 import 'package:chat_app/main.dart';
 
 /// Hive is initialized once in `setUpAll` (real async zone, outside the
@@ -119,6 +120,16 @@ Future<ProviderContainer> makeContainer({List<Override> extraOverrides = const [
   final sessionStore = SessionStore(await SharedPreferences.getInstance());
   container.read(sessionStoreProvider.notifier).attach(sessionStore);
   return container;
+}
+
+/// Types [text] into the composer's TextField and submits it.
+Future<void> sendMessageViaComposer(
+  WidgetTester tester,
+  String text,
+) async {
+  await tester.enterText(find.byType(TextField).last, text);
+  await tester.testTextInput.receiveAction(TextInputAction.done);
+  await tester.pump(const Duration(milliseconds: 10));
 }
 
 /// Remote-like data source: reports no local persistence so the controller
@@ -319,8 +330,8 @@ void main() {
     // Chat screen should show the empty state.
     expect(find.text('How can I help you today?'), findsOneWidget);
 
-    // Tap a suggestion chip → message sent.
-    await tester.tap(find.text('Help me debug code'));
+    // Send a message via the composer → streaming starts.
+    await sendMessageViaComposer(tester, 'Tolong jelaskan Flutter');
     // First frame: message added, streaming just started (cursor visible).
     await tester.pump(const Duration(milliseconds: 10));
 
@@ -364,8 +375,8 @@ void main() {
     // Empty state, no conversation yet.
     expect(find.text('How can I help you today?'), findsOneWidget);
 
-    // Send a short message via a suggestion chip (new chat).
-    await tester.tap(find.text('Help me debug code'));
+    // Send a short message via the composer (new chat).
+    await sendMessageViaComposer(tester, 'Halo');
     await tester.pump(const Duration(milliseconds: 10));
 
     // Short stream may already be streaming or done; either way the user
@@ -439,7 +450,7 @@ void main() {
     expect(chat.pendingDocument!.title, 'tentang-ceo');
 
     // Send first message.
-    await tester.tap(find.text('Help me debug code'));
+    await sendMessageViaComposer(tester, 'Siapa CEO kami?');
     await tester.pump(const Duration(milliseconds: 10));
     chat = container.read(chatControllerProvider);
     expect(chat.messages.length, 2);
@@ -456,5 +467,58 @@ void main() {
     expect(chat.pendingDocument, isNull);
     expect(chat.currentConversationId, 'conv_1');
     expect(chat.conversations.first.documentId, 'doc_1');
+  });
+
+  testWidgets('Add context reappears after opening history then New Chat',
+      (tester) async {
+    final fakeRepo = _RemoteFakeChatRepository();
+    final container = await makeContainer(extraOverrides: [
+      chatRepositoryProvider.overrideWithValue(fakeRepo),
+      chatDataSourceProvider.overrideWith((ref) => _RemoteFakeDataSource()),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const ChatApp()),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Login.
+    await tester.enterText(
+      find.byType(TextFormField).at(0),
+      'john_doe',
+    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'password123');
+    await tester.tap(find.text('Login'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // New chat: Add context visible.
+    expect(find.text('Add context'), findsOneWidget);
+
+    // Send a message → conversation created.
+    await sendMessageViaComposer(tester, 'Halo');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Open the drawer and select the conversation from history.
+    await tester.tap(find.byTooltip('Open history'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 100));
+    final historyTile = find.widgetWithText(ConversationTile, 'Halo');
+    await tester.ensureVisible(historyTile);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(historyTile);
+    await tester.pumpAndSettle(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Now New Chat → Add context must reappear (conversation id reset).
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final chat = container.read(chatControllerProvider);
+    expect(chat.currentConversationId, isNull);
+    expect(find.text('Add context'), findsOneWidget);
   });
 }
