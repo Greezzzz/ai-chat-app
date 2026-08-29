@@ -5,9 +5,20 @@ import '../../../../core/theme/neo_theme.dart';
 
 /// Empty chat state with suggestion chips (PRD §17).
 class EmptyChatState extends StatelessWidget {
-  const EmptyChatState({super.key, required this.onSuggestionSelected});
+  const EmptyChatState({
+    super.key,
+    required this.onSuggestionSelected,
+    this.onAddContext,
+    this.pendingDocumentTitle,
+  });
 
   final ValueChanged<String> onSuggestionSelected;
+
+  /// Shown when the user can attach a RAG context to a brand-new chat.
+  final VoidCallback? onAddContext;
+
+  /// Title of a pending context document (shown as a chip when set).
+  final String? pendingDocumentTitle;
 
   static const _suggestions = [
     'Explain quantum computing',
@@ -61,6 +72,26 @@ class EmptyChatState extends StatelessWidget {
                 onTap: () => onSuggestionSelected(suggestion),
               ),
               const SizedBox(height: AppSpacing.sm),
+            ],
+            if (onAddContext != null) ...[
+              const SizedBox(height: AppSpacing.lg),
+              if (pendingDocumentTitle != null) ...[
+                Text(
+                  '📎 $pendingDocumentTitle',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: neo.ink,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+              ],
+              _SuggestionChip(
+                label: pendingDocumentTitle != null
+                    ? 'Ganti konteks'
+                    : 'Add context',
+                onTap: onAddContext!,
+              ),
             ],
           ],
         ),

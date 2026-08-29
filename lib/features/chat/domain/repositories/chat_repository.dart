@@ -21,12 +21,20 @@ abstract interface class ChatRepository {
   /// Updates a conversation (title / timestamps).
   Future<void> updateConversation(Conversation conversation);
 
+  /// Uploads a RAG context document. Returns the new document id.
+  Future<String> uploadDocument({
+    required String title,
+    required String content,
+  });
+
   /// Sends a user message and streams the assistant response chunk by chunk.
   ///
   /// Creates the conversation on first message if [conversationId] is null,
-  /// persisting the user message and each streamed chunk.
+  /// persisting the user message and each streamed chunk. [documentId] binds
+  /// a RAG document to a brand-new conversation (first message only).
   Stream<String> sendMessage({
     required String? conversationId,
     required String message,
+    String? documentId,
   });
 }

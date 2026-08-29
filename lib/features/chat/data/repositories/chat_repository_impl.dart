@@ -49,9 +49,18 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
+  Future<String> uploadDocument({
+    required String title,
+    required String content,
+  }) {
+    return _dataSource.uploadDocument(title: title, content: content);
+  }
+
+  @override
   Stream<String> sendMessage({
     required String? conversationId,
     required String message,
+    String? documentId,
   }) async* {
     final now = DateTime.now();
     final local = _dataSource.persistsLocally;
@@ -81,6 +90,7 @@ class ChatRepositoryImpl implements ChatRepository {
         final updated = conv.copyWith(
           title: _titleGenerator.fromFirstMessage(message),
           updatedAt: now,
+          documentId: documentId,
         );
         await _dataSource.updateConversation(updated);
       } else if (conv != null) {
@@ -109,6 +119,7 @@ class ChatRepositoryImpl implements ChatRepository {
       await for (final chunk in _dataSource.streamChat(
         conversationId: convId,
         message: message,
+        documentId: documentId,
       )) {
         buffer.write(chunk);
         // Persist incrementally so a crash mid-stream keeps partial content.

@@ -10,6 +10,7 @@ import '../../../../core/storage/session_store.dart';
 import '../../../../core/utils/api_base_url.dart';
 import '../../domain/entities/conversation.dart';
 import '../../domain/entities/message.dart';
+import '../models/conversation_model.dart';
 import 'chat_data_source.dart';
 
 /// Remote chat backed by the ai-backend-v2 API (docs/api-spec.md).
@@ -57,14 +58,7 @@ class ChatRemoteDataSource implements ChatDataSource {
       final list = res.data?['conversations'] as List<dynamic>? ?? const [];
       final conversations = list.map((e) {
         final json = Map<String, dynamic>.from(e as Map);
-        return Conversation(
-          id: json['id'].toString(),
-          userId: _session.userId ?? '',
-          title: json['title'] as String? ?? 'New Chat',
-          createdAt: DateTime.parse(json['created_at'] as String),
-          // The list API has no updated_at; fall back to created_at.
-          updatedAt: DateTime.parse(json['created_at'] as String),
-        );
+        return ConversationModel.fromJson(json).toEntity();
       }).toList();
       return conversations;
     } on DioException catch (e) {
@@ -79,14 +73,7 @@ class ChatRemoteDataSource implements ChatDataSource {
         '$_baseUrl/api/chat/conversations/$id',
         options: Options(headers: _authHeaders()),
       );
-      final json = res.data!;
-      return Conversation(
-        id: json['id'].toString(),
-        userId: json['user_id'].toString(),
-        title: json['title'] as String? ?? 'New Chat',
-        createdAt: DateTime.parse(json['created_at'] as String),
-        updatedAt: DateTime.parse(json['created_at'] as String),
-      );
+      return ConversationModel.fromJson(res.data!).toEntity();
     } on DioException catch (e) {
       throw _mapError(e, fallback: 'Gagal memuat percakapan.');
     }
@@ -133,9 +120,34 @@ class ChatRemoteDataSource implements ChatDataSource {
   }
 
   @override
+  Future<String> uploadDocument({
+    required String title,
+    required String content,
+  }) async {
+    final token = _session.token;
+    if (token == null) {
+      throw const SessionException('Sesi berakhir. Silakan login ulang.');
+    }
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '$_baseUrl/api/rag/documents',
+        data: {'title': title, 'content': content},
+        options: Options(
+          headers: _authHeaders(token),
+          contentType: Headers.jsonContentType,
+        ),
+      );
+      return (res.data?['document_id'] ?? res.data?['id']).toString();
+    } on DioException catch (e) {
+      throw _mapError(e, fallback: 'Gagal mengunggah dokumen.');
+    }
+  }
+
+  @override
   Stream<String> streamChat({
     required String conversationId,
     required String message,
+    String? documentId,
   }) async* {
     final token = _session.token;
     if (token == null) {
@@ -148,6 +160,9 @@ class ChatRemoteDataSource implements ChatDataSource {
         data: {
           'message': message,
           'conversation_id': int.tryParse(conversationId),
+          // document_id only binds on a brand-new conversation (first
+          // message); backend ignores it for existing ones.
+          if (documentId != null) 'document_id': int.tryParse(documentId),
         },
         options: Options(
           headers: {
@@ -187,8 +202,8 @@ class ChatRemoteDataSource implements ChatDataSource {
     }
   }
 
-  Map<String, String> _authHeaders() => {
-        'Authorization': 'Bearer ${_session.token ?? ''}',
+  Map<String, String> _authHeaders([String? token]) => {
+        'Authorization': 'Bearer ${token ?? _session.token ?? ''}',
       };
 
   /// Maps backend errors (spec format `{code, message, details}`) to typed

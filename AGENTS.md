@@ -123,6 +123,13 @@ Detail lengkap: `developer.md` section 4.3.
 - [x] **Docs** — `developer.md` (running project), `prd.md` (acuan)
 - [x] **GitHub repo** — https://github.com/Greezzzz/ai-chat-app (public,
   branch `master`), di-push via `gh repo create`
+- [x] **RAG context (V1)** — di new chat ada tombol "Add context": form
+  title + isi konteks → upload `POST /api/rag/documents` → `document_id`
+  disimpan sebagai `pendingDocument` di `ChatController` → dikirim bersama
+  pesan pertama (`POST /api/chat/stream` body `document_id`) → ter-bind ke
+  percakapan (backend). Chip indikator konteks di atas composer; popup
+  konfirmasi saat back/new chat jika konteks belum terpakai. `Conversation`
+  punya field `documentId` (parsing dari list/detail API)
 
 ### ⬜ Belum / Next Steps
 

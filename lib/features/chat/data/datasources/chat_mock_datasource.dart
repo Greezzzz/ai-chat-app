@@ -79,9 +79,19 @@ class MockChatDataSource implements ChatDataSource {
   }
 
   @override
+  Future<String> uploadDocument({
+    required String title,
+    required String content,
+  }) async {
+    // Mock: no real upload; return a fake document id bound to the user.
+    return 'doc_${DateTime.now().millisecondsSinceEpoch}';
+  }
+
+  @override
   Stream<String> streamChat({
     required String conversationId,
     required String message,
+    String? documentId,
   }) {
     return _simulateStream(message);
   }

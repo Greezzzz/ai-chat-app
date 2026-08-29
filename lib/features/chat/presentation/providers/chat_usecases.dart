@@ -5,6 +5,7 @@ import '../../domain/usecases/create_conversation.dart';
 import '../../domain/usecases/get_conversations.dart';
 import '../../domain/usecases/get_messages.dart';
 import '../../domain/usecases/send_message.dart';
+import '../../domain/usecases/upload_document.dart';
 
 final getConversationsProvider = Provider<GetConversations>(
   (ref) => GetConversations(ref.watch(chatRepositoryProvider)),
@@ -20,4 +21,8 @@ final createConversationProvider = Provider<CreateConversation>(
 
 final sendMessageProvider = Provider<SendMessage>(
   (ref) => SendMessage(ref.watch(chatRepositoryProvider)),
+);
+
+final uploadDocumentProvider = Provider<UploadDocument>(
+  (ref) => UploadDocument(ref.watch(chatRepositoryProvider)),
 );

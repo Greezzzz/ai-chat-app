@@ -8,6 +8,7 @@ import '../../../../core/ui/components/skeleton_loader.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
 import '../../domain/entities/conversation.dart';
 import '../providers/chat_controller.dart';
+import '../widgets/add_context_sheet.dart';
 import '../widgets/conversation_drawer.dart';
 import '../widgets/empty_chat_state.dart';
 import '../widgets/message_bubble.dart';
@@ -63,6 +64,62 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  /// Opens the Add Context sheet, uploads the document and keeps it pending
+  /// until the first message binds it to the conversation.
+  Future<void> _showAddContext() async {
+    final result = await showAddContextSheet(context);
+    if (result == null) return; // dismissed
+    final ok = await ref.read(chatControllerProvider.notifier).addContextDocument(
+          title: result.title,
+          content: result.content,
+        );
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal menambahkan konteks. Coba lagi.')),
+      );
+    }
+  }
+
+  /// Confirms discarding the pending context when leaving a new chat before
+  /// the first message was sent.
+  Future<bool> _confirmDiscardPending() async {
+    final chat = ref.read(chatControllerProvider);
+    if (chat.pendingDocument == null) return true;
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Konteks belum terpakai'),
+        content: const Text(
+          'Konteks telah ditambahkan tetapi belum dikirim ke percakapan. '
+          'Yakin ingin menghapusnya?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true) {
+      ref.read(chatControllerProvider.notifier).clearPendingDocument();
+    }
+    return discard ?? false;
+  }
+
+  /// Leaves the current new chat (back / new chat). Confirms first when a
+  /// pending context would be lost.
+  Future<void> _leaveChat() async {
+    if (!await _confirmDiscardPending()) return;
+    if (mounted) {
+      ref.read(chatControllerProvider.notifier).newConversation();
+    }
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
@@ -77,65 +134,74 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     final groups = _groupConversations(chat.conversations);
 
-    return Scaffold(
-      key: _drawerKey,
-      drawer: ConversationDrawer(
-        groups: groups,
-        activeId: chat.currentConversationId,
-        onSelect: (id) {
-          _drawerKey.currentState?.closeDrawer();
-          notifier.selectConversation(id);
-        },
-        onNewChat: () {
-          _drawerKey.currentState?.closeDrawer();
-          notifier.newConversation();
-        },
-        onLogout: () {
-          _drawerKey.currentState?.closeDrawer();
-          // Clear chat state (selected conversation, messages) so the next
-          // login starts fresh, then log out (router redirects to /login).
-          notifier.reset();
-          ref.read(authControllerProvider.notifier).logout();
-        },
-      ),
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.menu_rounded),
-          tooltip: 'Open history',
-          onPressed: () => _drawerKey.currentState?.openDrawer(),
+    return PopScope(
+      canPop: chat.pendingDocument == null,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        await _confirmDiscardPending();
+      },
+      child: Scaffold(
+        key: _drawerKey,
+        drawer: ConversationDrawer(
+          groups: groups,
+          activeId: chat.currentConversationId,
+          onSelect: (id) {
+            _drawerKey.currentState?.closeDrawer();
+            notifier.selectConversation(id);
+          },
+          onNewChat: () {
+            _drawerKey.currentState?.closeDrawer();
+            _leaveChat();
+          },
+          onLogout: () {
+            _drawerKey.currentState?.closeDrawer();
+            // Clear chat state (selected conversation, messages) so the next
+            // login starts fresh, then log out (router redirects to /login).
+            notifier.reset();
+            ref.read(authControllerProvider.notifier).logout();
+          },
         ),
-        title: Text(chat.currentConversation?.title ?? 'AI Assistant'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_rounded),
-            tooltip: 'New chat',
-            onPressed: notifier.newConversation,
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.menu_rounded),
+            tooltip: 'Open history',
+            onPressed: () => _drawerKey.currentState?.openDrawer(),
           ),
-        ],
+          title: Text(chat.currentConversation?.title ?? 'AI Assistant'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.add_rounded),
+              tooltip: 'New chat',
+              onPressed: _leaveChat,
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            Expanded(child: _buildBody(chat, notifier)),
+            if (chat.pendingDocument != null)
+              _ContextChip(title: chat.pendingDocument!.title),
+            MessageComposer(
+              isStreaming: chat.isStreaming,
+              onSend: notifier.sendMessage,
+              onStop: notifier.stopStreaming,
+            ),
+          ],
+        ),
+        floatingActionButton: _userScrolledUp && chat.messages.isNotEmpty
+            ? FloatingActionButton.small(
+                onPressed: _scrollToBottom,
+                tooltip: 'Scroll to latest',
+                backgroundColor: neo.accent,
+                foregroundColor: neo.ink,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  side: BorderSide(color: neo.border, width: neo.borderWidth),
+                ),
+                child: const Icon(Icons.arrow_downward_rounded),
+              )
+            : null,
       ),
-      body: Column(
-        children: [
-          Expanded(child: _buildBody(chat, notifier)),
-          MessageComposer(
-            isStreaming: chat.isStreaming,
-            onSend: notifier.sendMessage,
-            onStop: notifier.stopStreaming,
-          ),
-        ],
-      ),
-      floatingActionButton: _userScrolledUp && chat.messages.isNotEmpty
-          ? FloatingActionButton.small(
-              onPressed: _scrollToBottom,
-              tooltip: 'Scroll to latest',
-              backgroundColor: neo.accent,
-              foregroundColor: neo.ink,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                side: BorderSide(color: neo.border, width: neo.borderWidth),
-              ),
-              child: const Icon(Icons.arrow_downward_rounded),
-            )
-          : null,
     );
   }
 
@@ -170,6 +236,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (chat.messages.isEmpty) {
       return EmptyChatState(
         onSuggestionSelected: (text) => notifier.sendMessage(text),
+        // Only allow attaching a context to a brand-new, not-yet-started chat.
+        onAddContext: chat.currentConversationId == null
+            ? _showAddContext
+            : null,
+        pendingDocumentTitle: chat.pendingDocument?.title,
       );
     }
 
@@ -208,5 +279,55 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (yesterday.isNotEmpty) ConversationGroup('Yesterday', yesterday),
       if (older.isNotEmpty) ConversationGroup('Older', older),
     ];
+  }
+}
+
+/// Small indicator above the composer showing the pending context document
+/// that will be bound to the conversation on the first message.
+class _ContextChip extends StatelessWidget {
+  const _ContextChip({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final neo = Theme.of(context).extension<NeoTheme>()!;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        0,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: neo.accent.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+        border: Border.all(color: neo.border, width: neo.borderWidth),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.attach_file_rounded, size: 14),
+          const SizedBox(width: AppSpacing.xs),
+          Flexible(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: neo.ink,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

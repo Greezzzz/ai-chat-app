@@ -185,4 +185,74 @@ void main() {
     final ds = ChatRemoteDataSource(session, dio: dio);
     expect(ds.persistsLocally, isFalse);
   });
+
+  test('uploads a document and returns its id', () async {
+    final session = await _session();
+    final dio = Dio()..httpClientAdapter = _CaptureAdapter(
+      (options) => ResponseBody(
+        Stream.value(Uint8List.fromList(
+          utf8.encode('{"document_id": 7}'),
+        )),
+        200,
+        headers: {Headers.contentTypeHeader: ['application/json']},
+      ),
+      onRequest: (options) {},
+    );
+
+    final ds = ChatRemoteDataSource(session, dio: dio);
+    final id = await ds.uploadDocument(title: 'tentang-ceo', content: 'Grezz...');
+    expect(id, '7');
+  });
+
+  test('sends document_id in the stream body for a new chat', () async {
+    final session = await _session();
+    Map<String, dynamic>? lastBody;
+    final dio = Dio()..httpClientAdapter = _CaptureAdapter(
+      (options) => ResponseBody(
+        Stream.value(Uint8List.fromList(
+          utf8.encode('data: {"delta": "hai"}\n\ndata: [DONE]\n\n'),
+        )),
+        200,
+        headers: {Headers.contentTypeHeader: ['text/event-stream']},
+      ),
+      onRequest: (options) {
+        if (options.path.endsWith('/api/chat/stream')) {
+          lastBody = options.data as Map<String, dynamic>;
+        }
+      },
+    );
+
+    final ds = ChatRemoteDataSource(session, dio: dio);
+    await ds.streamChat(
+      conversationId: '',
+      message: 'halo',
+      documentId: '7',
+    ).toList();
+
+    expect(lastBody, isNotNull);
+    expect(lastBody!['conversation_id'], isNull);
+    expect(lastBody!['document_id'], 7);
+  });
+}
+
+/// Adapter with a per-request handler so tests can inspect request options
+/// and return a custom response.
+class _CaptureAdapter implements HttpClientAdapter {
+  _CaptureAdapter(this._respond, {required this.onRequest});
+
+  final ResponseBody Function(RequestOptions) _respond;
+  final void Function(RequestOptions) onRequest;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    onRequest(options);
+    return _respond(options);
+  }
+
+  @override
+  void close({bool force = false}) {}
 }

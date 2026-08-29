@@ -9,9 +9,21 @@ import '../../domain/usecases/create_conversation.dart';
 import '../../domain/usecases/get_conversations.dart';
 import '../../domain/usecases/get_messages.dart';
 import '../../domain/usecases/send_message.dart';
+import '../../domain/usecases/upload_document.dart';
 import '../../data/datasources/chat_data_source.dart';
 import '../../data/repositories/chat_repository_impl.dart';
 import 'chat_usecases.dart';
+
+/// A RAG context document prepared for a brand-new conversation.
+///
+/// Uploaded to the backend up front; the [documentId] is sent with the first
+/// message to bind it to the conversation (per api-spec).
+class PendingDocument {
+  const PendingDocument({required this.documentId, required this.title});
+
+  final String documentId;
+  final String title;
+}
 
 /// UI-facing chat state.
 class ChatState {
@@ -23,6 +35,7 @@ class ChatState {
     this.isLoadingMessages = false,
     this.isStreaming = false,
     this.errorMessage,
+    this.pendingDocument,
   });
 
   final List<Conversation> conversations;
@@ -32,6 +45,10 @@ class ChatState {
   final bool isLoadingMessages;
   final bool isStreaming;
   final String? errorMessage;
+
+  /// RAG document uploaded but not yet bound to a conversation (waiting for
+  /// the first message). Non-null only in a brand-new, not-yet-started chat.
+  final PendingDocument? pendingDocument;
 
   Conversation? get currentConversation {
     for (final c in conversations) {
@@ -48,7 +65,9 @@ class ChatState {
     bool? isLoadingMessages,
     bool? isStreaming,
     String? errorMessage,
+    PendingDocument? pendingDocument,
     bool clearError = false,
+    bool clearPendingDocument = false,
   }) {
     return ChatState(
       conversations: conversations ?? this.conversations,
@@ -59,6 +78,9 @@ class ChatState {
       isLoadingMessages: isLoadingMessages ?? this.isLoadingMessages,
       isStreaming: isStreaming ?? this.isStreaming,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      pendingDocument: clearPendingDocument
+          ? null
+          : (pendingDocument ?? this.pendingDocument),
     );
   }
 }
@@ -70,6 +92,7 @@ class ChatController extends StateNotifier<ChatState> {
     this._getMessages,
     this._createConversation,
     this._sendMessage,
+    this._uploadDocument,
     this._dataSource,
   ) : super(const ChatState());
 
@@ -77,6 +100,7 @@ class ChatController extends StateNotifier<ChatState> {
   final GetMessages _getMessages;
   final CreateConversation _createConversation;
   final SendMessage _sendMessage;
+  final UploadDocument _uploadDocument;
   final ChatDataSource _dataSource;
 
   StreamSubscription<String>? _streamSub;
@@ -136,6 +160,7 @@ class ChatController extends StateNotifier<ChatState> {
         currentConversationId: conversation.id,
         messages: const [],
         clearError: true,
+        clearPendingDocument: true,
       );
     } else {
       // Remote: the backend creates the conversation on the first message.
@@ -143,9 +168,41 @@ class ChatController extends StateNotifier<ChatState> {
         currentConversationId: null,
         messages: const [],
         clearError: true,
+        clearPendingDocument: true,
       );
     }
     await loadConversations();
+  }
+
+  /// Uploads a RAG context document and keeps it pending until the first
+  /// message of the new chat binds it to the conversation.
+  Future<bool> addContextDocument({
+    required String title,
+    required String content,
+  }) async {
+    try {
+      final documentId = await _uploadDocument(
+        title: title,
+        content: content,
+      );
+      state = state.copyWith(
+        pendingDocument: PendingDocument(
+          documentId: documentId,
+          title: title,
+        ),
+        clearError: true,
+      );
+      return true;
+    } on AppException catch (e) {
+      state = state.copyWith(errorMessage: e.message);
+      return false;
+    }
+  }
+
+  /// Discards the pending context document (used when leaving a new chat
+  /// without sending the first message).
+  void clearPendingDocument() {
+    state = state.copyWith(clearPendingDocument: true);
   }
 
   /// Sends a message and streams the assistant response.
@@ -155,6 +212,9 @@ class ChatController extends StateNotifier<ChatState> {
 
     final convId = state.currentConversationId;
     final isRemote = !_dataSource.persistsLocally;
+    // A pending document binds to the conversation on the first message.
+    final pendingDoc = state.pendingDocument;
+    final isFirstMessage = convId == null && pendingDoc != null;
 
     // Optimistically show the user message.
     final userMessage = Message(
@@ -193,6 +253,7 @@ class ChatController extends StateNotifier<ChatState> {
     _streamSub = _sendMessage(
       conversationId: effectiveConvId,
       message: trimmed,
+      documentId: pendingDoc?.documentId,
     ).listen(
       (chunk) {
         // Accumulate cheaply; throttle UI rebuilds so long streams don't
@@ -259,8 +320,14 @@ class ChatController extends StateNotifier<ChatState> {
                       : m,
                 ),
               ],
+              // The document is now bound to the conversation server-side;
+              // the pending marker is no longer needed.
+              clearPendingDocument: isFirstMessage,
             );
           }
+        } else if (isFirstMessage) {
+          // Mock mode: document bound on the first message too.
+          state = state.copyWith(clearPendingDocument: true);
         }
       },
     );
@@ -318,6 +385,7 @@ final chatControllerProvider =
     ref.watch(getMessagesProvider),
     ref.watch(createConversationProvider),
     ref.watch(sendMessageProvider),
+    ref.watch(uploadDocumentProvider),
     ref.watch(chatDataSourceProvider),
   );
 });

@@ -74,9 +74,17 @@ class _FakeChatRepository implements ChatRepository {
   }
 
   @override
+  Future<String> uploadDocument({
+    required String title,
+    required String content,
+  }) async =>
+      'doc_${_conversations.length + 1}';
+
+  @override
   Stream<String> sendMessage({
     required String? conversationId,
     required String message,
+    String? documentId,
   }) async* {
     final convId =
         conversationId ?? (await createConversation()).id;
@@ -136,9 +144,17 @@ class _RemoteFakeDataSource implements ChatDataSource {
   Future<void> updateConversation(Conversation conversation) async {}
 
   @override
+  Future<String> uploadDocument({
+    required String title,
+    required String content,
+  }) async =>
+      'doc_1';
+
+  @override
   Stream<String> streamChat({
     required String conversationId,
     required String message,
+    String? documentId,
   }) async* {
     yield 'placeholder';
   }
@@ -174,9 +190,17 @@ class _RemoteFakeChatRepository implements ChatRepository {
   Future<void> updateConversation(Conversation conversation) async {}
 
   @override
+  Future<String> uploadDocument({
+    required String title,
+    required String content,
+  }) async =>
+      'doc_$_nextId';
+
+  @override
   Stream<String> sendMessage({
     required String? conversationId,
     required String message,
+    String? documentId,
   }) async* {
     // Backend creates the conversation server-side on first message.
     final convId = conversationId ?? 'conv_${_nextId++}';
@@ -189,6 +213,7 @@ class _RemoteFakeChatRepository implements ChatRepository {
           title: message,
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
+          documentId: documentId,
         ),
       );
     }
