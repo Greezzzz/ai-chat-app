@@ -307,6 +307,11 @@ class ChatController extends StateNotifier<ChatState> {
         if (isRemote && convId == null) {
           await loadConversations();
           final conversations = state.conversations;
+          // The document is bound server-side once the stream completed, so
+          // the pending marker is always cleared here (even if the list
+          // hasn't picked up the new conversation yet) — otherwise the user
+          // gets stuck with a stale "pending context" state.
+          final clearPending = isFirstMessage;
           if (conversations.isNotEmpty) {
             // Pick the newest conversation and assign its id to the messages
             // that were just streamed (they were created without an id).
@@ -320,9 +325,16 @@ class ChatController extends StateNotifier<ChatState> {
                       : m,
                 ),
               ],
-              // The document is now bound to the conversation server-side;
-              // the pending marker is no longer needed.
-              clearPendingDocument: isFirstMessage,
+              clearPendingDocument: clearPending,
+            );
+          } else {
+            // The new conversation isn't visible yet (e.g. list fetch raced
+            // the backend commit). Keep the messages but drop the pending
+            // marker so the user isn't blocked.
+            state = state.copyWith(
+              clearPendingDocument: clearPending,
+              errorMessage:
+                  'Percakapan baru belum muncul. Tarik untuk memuat ulang.',
             );
           }
         } else if (isFirstMessage) {

@@ -388,4 +388,73 @@ void main() {
     expect(chat.conversations.length, 1);
     expect(chat.currentConversationId, 'conv_1');
   });
+
+  testWidgets('Remote new chat with pending context: first message binds '
+      'document and stream completes', (tester) async {
+    final fakeRepo = _RemoteFakeChatRepository();
+    final container = await makeContainer(extraOverrides: [
+      chatRepositoryProvider.overrideWithValue(fakeRepo),
+      chatDataSourceProvider.overrideWith((ref) => _RemoteFakeDataSource()),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const ChatApp()),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Login.
+    await tester.enterText(
+      find.byType(TextFormField).at(0),
+      'john_doe',
+    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'password123');
+    await tester.tap(find.text('Login'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Add context via the empty state button.
+    expect(find.text('Add context'), findsOneWidget);
+    await tester.tap(find.text('Add context'));
+    await tester.pump(const Duration(milliseconds: 300));
+    // The sheet should be visible now.
+    expect(find.text('Isi konteks'), findsOneWidget);
+    await tester.enterText(
+      find.byType(TextFormField).at(0),
+      'tentang-ceo',
+    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'Grezz adalah CEO');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.ensureVisible(find.text('Submit'));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.text('Submit'));
+    // Let the sheet close + upload complete.
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Pending document is set.
+    var chat = container.read(chatControllerProvider);
+    expect(chat.pendingDocument, isNotNull);
+    expect(chat.pendingDocument!.title, 'tentang-ceo');
+
+    // Send first message.
+    await tester.tap(find.text('Help me debug code'));
+    await tester.pump(const Duration(milliseconds: 10));
+    chat = container.read(chatControllerProvider);
+    expect(chat.messages.length, 2);
+
+    // Let the stream finish.
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    chat = container.read(chatControllerProvider);
+    expect(chat.isStreaming, isFalse);
+    expect(chat.messages.last.status, MessageStatus.completed);
+    expect(chat.messages.last.content, 'Jawaban singkat.');
+    // Pending cleared after binding; conversation id discovered.
+    expect(chat.pendingDocument, isNull);
+    expect(chat.currentConversationId, 'conv_1');
+    expect(chat.conversations.first.documentId, 'doc_1');
+  });
 }
