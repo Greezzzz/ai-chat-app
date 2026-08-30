@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../../../../config/environment.dart';
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/network/auth_interceptor.dart';
 import '../../../../core/network/client_trace.dart';
 import '../../../../core/storage/session_store.dart';
 import '../../../../core/utils/api_base_url.dart';
@@ -25,7 +26,10 @@ class AuthRemoteDataSource implements AuthDataSource {
                 sendTimeout: _timeout,
               ),
             )..interceptors.add(ClientTraceInterceptor())),
-        _baseUrl = baseUrl ?? _resolveBaseUrl();
+        _baseUrl = baseUrl ?? _resolveBaseUrl() {
+    // The auth interceptor needs the same dio instance to retry requests.
+    _dio.interceptors.add(AuthInterceptor(_session, dio: _dio));
+  }
 
   final SessionStore _session;
   final Dio _dio;
@@ -117,43 +121,15 @@ class AuthRemoteDataSource implements AuthDataSource {
     }
   }
 
-  /// Calls GET /me, auto-refreshing the access token if needed.
+  /// Calls GET /me. The [AuthInterceptor] handles 401 + token refresh and
+  /// retries transparently; a failed refresh clears the session and bounces
+  /// to login via [SessionExpiredNotifier].
   Future<User> _me() async {
-    try {
-      final res = await _dio.get<Map<String, dynamic>>(
-        '$_baseUrl/api/auth/me',
-        options: Options(headers: _authHeaders(_session.token!)),
-      );
-      return _userFromJson(res.data!);
-    } on DioException catch (e) {
-      if (e.response?.statusCode == 401 && _session.refreshToken != null) {
-        if (await _refresh()) {
-          final res = await _dio.get<Map<String, dynamic>>(
-            '$_baseUrl/api/auth/me',
-            options: Options(headers: _authHeaders(_session.token!)),
-          );
-          return _userFromJson(res.data!);
-        }
-      }
-      throw _mapError(e, fallback: 'Sesi berakhir. Silakan login ulang.');
-    }
-  }
-
-  /// Rotates the token pair via /refresh. Returns true on success.
-  Future<bool> _refresh() async {
-    final refreshToken = _session.refreshToken;
-    if (refreshToken == null) return false;
-    try {
-      final res = await _dio.post<Map<String, dynamic>>(
-        '$_baseUrl/api/auth/refresh',
-        data: {'refresh_token': refreshToken},
-        options: Options(contentType: Headers.jsonContentType),
-      );
-      await _saveTokenPair(res.data!);
-      return true;
-    } on DioException {
-      return false;
-    }
+    final res = await _dio.get<Map<String, dynamic>>(
+      '$_baseUrl/api/auth/me',
+      options: Options(headers: _authHeaders(_session.token!)),
+    );
+    return _userFromJson(res.data!);
   }
 
   Future<void> _saveTokenPair(Map<String, dynamic> data) async {

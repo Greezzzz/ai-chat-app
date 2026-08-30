@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 
 import '../../../../config/environment.dart';
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/network/auth_interceptor.dart';
 import '../../../../core/network/client_trace.dart';
 import '../../../../core/storage/session_store.dart';
 import '../../../../core/utils/api_base_url.dart';
@@ -16,11 +17,10 @@ import 'chat_data_source.dart';
 /// Remote chat backed by the ai-backend-v2 API (docs/api-spec.md).
 ///
 /// Design notes matching the backend contract:
-/// - `POST /api/chat/stream` is SSE: `data: {"delta": "..."}\n\n` events,
-///   `data: {"error": "..."}` on mid-stream failure, `data: [DONE]` at the end.
-/// - When `conversation_id` is null the backend creates the conversation, but
-///   the SSE stream does NOT return the new id — the client discovers it by
-///   re-listing conversations after the stream finishes.
+/// - `POST /api/chat/stream` is SSE: `data: {"conversation_id": N}` first,
+///   then `data: {"delta": "..."}`, `data: {"error": "..."}`, `data: [DONE]`.
+/// - When `conversation_id` is null the backend creates the conversation and
+///   reports its id in the first SSE event.
 /// - Backend conversation/user ids are integers; the app model uses strings.
 class ChatRemoteDataSource implements ChatDataSource {
   ChatRemoteDataSource(
@@ -37,7 +37,10 @@ class ChatRemoteDataSource implements ChatDataSource {
                 sendTimeout: _timeout,
               ),
             )..interceptors.add(ClientTraceInterceptor())),
-        _baseUrl = baseUrl ?? _resolveBaseUrl();
+        _baseUrl = baseUrl ?? _resolveBaseUrl() {
+    // The auth interceptor needs the same dio instance to retry requests.
+    _dio.interceptors.add(AuthInterceptor(_session, dio: _dio));
+  }
 
   final SessionStore _session;
   final Dio _dio;

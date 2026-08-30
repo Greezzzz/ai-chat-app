@@ -104,6 +104,11 @@ Detail lengkap: `developer.md` section 4.3.
   W3C `traceparent` (`00-<traceId32hex>-<spanId16hex>-01`) + `X-Trace-Id`
   (trace id yang sama) di semua request auth + chat via Dio interceptor;
   backend OTel mengadopsi trace id klien → bisa dicari di Jaeger
+- [x] **Auth interceptor + refresh token** — `core/network/auth_interceptor.dart`:
+  inject `Authorization: Bearer` di semua request; saat 401 otomatis refresh
+  token (`POST /api/auth/refresh`) sekali lalu retry request; kalau refresh
+  gagal → clear session + `SessionExpiredNotifier` → logout → redirect ke
+  login. Dipasang di auth + chat remote (dio yang sama untuk retry)
 - [x] **History** — drawer dengan group Today/Yesterday/Older, select
   conversation, continue chat, persist Hive
 - [x] **Streaming stabil** — throttle rebuild UI (80ms) di `ChatController`

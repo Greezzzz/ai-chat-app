@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/network/auth_interceptor.dart';
 import 'core/router/app_router.dart';
 import 'core/storage/seed_data.dart';
 import 'core/storage/storage_providers.dart';
@@ -34,6 +35,19 @@ class _ChatAppState extends ConsumerState<ChatApp> {
   void initState() {
     super.initState();
     currentAuthState = ref.read(authControllerProvider);
+    // When a 401 can't be recovered by refreshing the token, the auth
+    // interceptor fires this to log the user out (router → /login).
+    SessionExpiredNotifier.onSessionExpired = () async {
+      // Reset chat state before logging out.
+      ref.read(chatControllerProvider.notifier).reset();
+      await ref.read(authControllerProvider.notifier).logout();
+    };
+  }
+
+  @override
+  void dispose() {
+    SessionExpiredNotifier.onSessionExpired = null;
+    super.dispose();
   }
 
   @override
