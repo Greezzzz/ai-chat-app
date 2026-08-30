@@ -217,12 +217,20 @@ class _RemoteFakeChatRepository implements ChatRepository {
   @override
   Future<void> updateConversation(Conversation conversation) async {}
 
+  /// When set, uploadDocument waits on this completer (to simulate a slow
+  /// upload in tests).
+  Completer<void>? uploadGate;
+
   @override
   Future<String> uploadDocument({
     required String title,
     required String content,
-  }) async =>
-      'doc_$_nextId';
+  }) async {
+    if (uploadGate != null) {
+      await uploadGate!.future;
+    }
+    return 'doc_$_nextId';
+  }
 
   @override
   Stream<String> sendMessage({
@@ -577,5 +585,72 @@ void main() {
     expect(chat.currentConversationId, isNotNull);
     expect(chat.currentConversationId, isNot('conv_old'));
     expect(chat.conversations.length, 2);
+  });
+
+  testWidgets('Send is blocked while the context upload is in flight',
+      (tester) async {
+    final gate = Completer<void>();
+    final fakeRepo = _RemoteFakeChatRepository()..uploadGate = gate;
+    final container = await makeContainer(extraOverrides: [
+      chatRepositoryProvider.overrideWithValue(fakeRepo),
+      chatDataSourceProvider.overrideWith((ref) => _RemoteFakeDataSource()),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const ChatApp()),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.enterText(
+      find.byType(TextFormField).at(0),
+      'john_doe',
+    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'password123');
+    await tester.tap(find.text('Login'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Add context — the upload is held by the gate.
+    await tester.tap(find.text('Add context'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.enterText(
+      find.byType(TextFormField).at(0),
+      'tentang-ceo',
+    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'Grezz adalah CEO');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.ensureVisible(find.text('Submit'));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.text('Submit'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Upload in flight: send is blocked.
+    var chat = container.read(chatControllerProvider);
+    expect(chat.isUploadingContext, isTrue);
+    expect(find.text('Menyiapkan konteks...'), findsOneWidget);
+
+    // Try to send a message — must be ignored.
+    await sendMessageViaComposer(tester, 'Siapa CEO kami?');
+    chat = container.read(chatControllerProvider);
+    expect(chat.messages.length, 0);
+
+    // Release the upload; now sending works.
+    gate.complete();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    chat = container.read(chatControllerProvider);
+    expect(chat.isUploadingContext, isFalse);
+    expect(chat.pendingDocument, isNotNull);
+
+    await sendMessageViaComposer(tester, 'Siapa CEO kami?');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    chat = container.read(chatControllerProvider);
+    expect(chat.messages.length, 2);
+    expect(chat.isStreaming, isFalse);
   });
 }

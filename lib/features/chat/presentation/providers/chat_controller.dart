@@ -36,6 +36,7 @@ class ChatState {
     this.isStreaming = false,
     this.errorMessage,
     this.pendingDocument,
+    this.isUploadingContext = false,
   });
 
   final List<Conversation> conversations;
@@ -49,6 +50,11 @@ class ChatState {
   /// RAG document uploaded but not yet bound to a conversation (waiting for
   /// the first message). Non-null only in a brand-new, not-yet-started chat.
   final PendingDocument? pendingDocument;
+
+  /// True while a context document is being uploaded. The send button stays
+  /// disabled until the upload finishes, so the first message is never sent
+  /// before the document is ready to be bound.
+  final bool isUploadingContext;
 
   Conversation? get currentConversation {
     for (final c in conversations) {
@@ -66,6 +72,7 @@ class ChatState {
     bool? isStreaming,
     String? errorMessage,
     PendingDocument? pendingDocument,
+    bool? isUploadingContext,
     bool clearError = false,
     bool clearPendingDocument = false,
     bool clearCurrentConversation = false,
@@ -83,6 +90,8 @@ class ChatState {
       pendingDocument: clearPendingDocument
           ? null
           : (pendingDocument ?? this.pendingDocument),
+      isUploadingContext:
+          isUploadingContext ?? this.isUploadingContext,
     );
   }
 }
@@ -182,10 +191,17 @@ class ChatController extends StateNotifier<ChatState> {
 
   /// Uploads a RAG context document and keeps it pending until the first
   /// message of the new chat binds it to the conversation.
+  ///
+  /// While the upload is in flight, [ChatState.isUploadingContext] is true so
+  /// the UI can disable sending until the document is ready.
   Future<bool> addContextDocument({
     required String title,
     required String content,
   }) async {
+    state = state.copyWith(
+      isUploadingContext: true,
+      clearError: true,
+    );
     try {
       final documentId = await _uploadDocument(
         title: title,
@@ -196,11 +212,15 @@ class ChatController extends StateNotifier<ChatState> {
           documentId: documentId,
           title: title,
         ),
+        isUploadingContext: false,
         clearError: true,
       );
       return true;
     } on AppException catch (e) {
-      state = state.copyWith(errorMessage: e.message);
+      state = state.copyWith(
+        isUploadingContext: false,
+        errorMessage: e.message,
+      );
       return false;
     }
   }
@@ -214,7 +234,11 @@ class ChatController extends StateNotifier<ChatState> {
   /// Sends a message and streams the assistant response.
   Future<void> sendMessage(String text) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty || state.isStreaming) return;
+    // Block sending while a context document is still uploading, so the
+    // first message can't be sent before the document is ready to bind.
+    if (trimmed.isEmpty || state.isStreaming || state.isUploadingContext) {
+      return;
+    }
 
     final convId = state.currentConversationId;
     final isRemote = !_dataSource.persistsLocally;

@@ -212,6 +212,8 @@ canned, persisten di Hive lokal. Tidak butuh backend sama sekali.
 
 ```bash
 flutter run -d emulator-5554 --dart-define=APP_ENV=production --dart-define=API_BASE_URL=http://127.0.0.1:8000
+flutter run -d emulator-5554 --dart-define=APP_ENV=production --dart-define=API_BASE_URL=http://192.168.1.50:8000
+flutter run -d emulator-5554 --dart-define=APP_ENV=production --dart-define=API_BASE_URL=http://100.96.104.0:8000
 ```
 
 - Pastikan backend **sudah running** di `127.0.0.1:8000` (lihat repo

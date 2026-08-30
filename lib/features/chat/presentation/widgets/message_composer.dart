@@ -7,17 +7,23 @@ import '../../../../core/theme/neo_theme.dart';
 ///
 /// - Empty input → send disabled.
 /// - While streaming → button becomes Stop (optional MVP enhancement).
+/// - While a context document is uploading → input + send disabled.
 class MessageComposer extends StatefulWidget {
   const MessageComposer({
     super.key,
     required this.onSend,
     this.onStop,
     this.isStreaming = false,
+    this.isUploadingContext = false,
   });
 
   final ValueChanged<String> onSend;
   final VoidCallback? onStop;
   final bool isStreaming;
+
+  /// True while a context document is being uploaded; the composer is
+  /// disabled so the first message can't be sent before it's ready.
+  final bool isUploadingContext;
 
   @override
   State<MessageComposer> createState() => _MessageComposerState();
@@ -46,7 +52,9 @@ class _MessageComposerState extends State<MessageComposer> {
 
   void _submit() {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || widget.isStreaming || widget.isUploadingContext) {
+      return;
+    }
     widget.onSend(text);
     _controller.clear();
     _focusNode.requestFocus();
@@ -55,6 +63,7 @@ class _MessageComposerState extends State<MessageComposer> {
   @override
   Widget build(BuildContext context) {
     final neo = Theme.of(context).extension<NeoTheme>()!;
+    final disabled = widget.isStreaming || widget.isUploadingContext;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(
@@ -78,7 +87,7 @@ class _MessageComposerState extends State<MessageComposer> {
               child: TextField(
                 controller: _controller,
                 focusNode: _focusNode,
-                enabled: !widget.isStreaming,
+                enabled: !disabled,
                 minLines: 1,
                 maxLines: 5,
                 textCapitalization: TextCapitalization.sentences,
@@ -123,7 +132,9 @@ class _MessageComposerState extends State<MessageComposer> {
             const SizedBox(width: AppSpacing.sm),
             // Send / Stop button.
             Material(
-              color: widget.isStreaming ? neo.error : neo.accent,
+              color: widget.isStreaming
+                  ? neo.error
+                  : (widget.isUploadingContext ? neo.surface : neo.accent),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
                 side: BorderSide(color: neo.border, width: neo.borderWidth),
@@ -132,16 +143,22 @@ class _MessageComposerState extends State<MessageComposer> {
               child: InkWell(
                 onTap: widget.isStreaming
                     ? widget.onStop
-                    : (_hasText ? _submit : null),
+                    : (widget.isUploadingContext
+                        ? null
+                        : (_hasText ? _submit : null)),
                 borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
                 child: Container(
                   width: 52,
                   height: 52,
                   alignment: Alignment.center,
                   child: Icon(
-                    widget.isStreaming ? Icons.stop_rounded : Icons.send_rounded,
+                    widget.isStreaming
+                        ? Icons.stop_rounded
+                        : Icons.send_rounded,
                     size: 22,
-                    color: widget.isStreaming ? neo.ink : neo.ink,
+                    color: widget.isUploadingContext && !widget.isStreaming
+                        ? neo.inkMuted
+                        : neo.ink,
                   ),
                 ),
               ),

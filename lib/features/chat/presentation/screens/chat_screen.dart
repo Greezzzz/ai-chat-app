@@ -183,6 +183,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               _ContextChip(title: chat.pendingDocument!.title),
             MessageComposer(
               isStreaming: chat.isStreaming,
+              isUploadingContext: chat.isUploadingContext,
               onSend: notifier.sendMessage,
               onStop: notifier.stopStreaming,
             ),
@@ -240,6 +241,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ? _showAddContext
             : null,
         pendingDocumentTitle: chat.pendingDocument?.title,
+        isUploadingContext: chat.isUploadingContext,
       );
     }
 

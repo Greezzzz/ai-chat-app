@@ -12,6 +12,7 @@ class EmptyChatState extends StatelessWidget {
     super.key,
     this.onAddContext,
     this.pendingDocumentTitle,
+    this.isUploadingContext = false,
   });
 
   /// Shown when the user can attach a RAG context to a brand-new chat.
@@ -19,6 +20,9 @@ class EmptyChatState extends StatelessWidget {
 
   /// Title of a pending context document (shown as a chip when set).
   final String? pendingDocumentTitle;
+
+  /// True while a context document is uploading; the button is disabled.
+  final bool isUploadingContext;
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +65,22 @@ class EmptyChatState extends StatelessWidget {
             ),
             if (onAddContext != null) ...[
               const SizedBox(height: AppSpacing.xl),
-              if (pendingDocumentTitle != null) ...[
+              if (isUploadingContext) ...[
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Menyiapkan konteks...',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: neo.inkMuted,
+                  ),
+                ),
+              ] else if (pendingDocumentTitle != null) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.md,
@@ -87,12 +106,13 @@ class EmptyChatState extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.sm),
               ],
-              _ActionButton(
-                label: pendingDocumentTitle != null
-                    ? 'Ganti konteks'
-                    : 'Add context',
-                onTap: onAddContext!,
-              ),
+              if (!isUploadingContext)
+                _ActionButton(
+                  label: pendingDocumentTitle != null
+                      ? 'Ganti konteks'
+                      : 'Add context',
+                  onTap: onAddContext!,
+                ),
             ],
           ],
         ),
