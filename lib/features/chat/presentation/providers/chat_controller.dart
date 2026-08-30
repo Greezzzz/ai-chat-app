@@ -317,41 +317,57 @@ class ChatController extends StateNotifier<ChatState> {
         );
 
         // Refresh the conversation list ONLY after the first message of a
-        // brand-new chat completes (the backend created it server-side and
-        // the SSE stream doesn't return its id). Existing chats are already
-        // in the list — no need to re-fetch.
+        // brand-new chat completes (the backend created it server-side).
+        // The SSE stream's first event carries the new conversation id, so we
+        // bind to that — no guessing which list entry is the new one.
         if (isRemote && convId == null) {
-          await loadConversations();
-          final conversations = state.conversations;
-          // The document is bound server-side once the stream completed, so
-          // the pending marker is always cleared here (even if the list
-          // hasn't picked up the new conversation yet) — otherwise the user
-          // gets stuck with a stale "pending context" state.
-          final clearPending = isFirstMessage;
-          if (conversations.isNotEmpty) {
-            // Pick the newest conversation and assign its id to the messages
-            // that were just streamed (they were created without an id).
-            final created = conversations.first;
+          final createdId = _dataSource.lastConversationId;
+          // Ids known before the refresh — used as a fallback to detect the
+          // new conversation when the backend didn't report its id.
+          final knownIds = state.conversations.map((c) => c.id).toSet();
+
+          if (createdId != null) {
+            // Bind directly to the id the backend reported.
             state = state.copyWith(
-              currentConversationId: created.id,
+              currentConversationId: createdId,
               messages: [
                 ...state.messages.map(
                   (m) => m.conversationId.isEmpty
-                      ? m.copyWith(conversationId: created.id)
+                      ? m.copyWith(conversationId: createdId)
                       : m,
                 ),
               ],
-              clearPendingDocument: clearPending,
+              clearPendingDocument: isFirstMessage,
             );
-          } else {
-            // The new conversation isn't visible yet (e.g. list fetch raced
-            // the backend commit). Keep the messages but drop the pending
-            // marker so the user isn't blocked.
-            state = state.copyWith(
-              clearPendingDocument: clearPending,
-              errorMessage:
-                  'Percakapan baru belum muncul. Tarik untuk memuat ulang.',
-            );
+          }
+
+          // Refresh the list once so the drawer shows the new conversation
+          // (and its title). Happens only after the first message of a new
+          // chat, per the flow: send → response → id → list → title.
+          await loadConversations();
+
+          // If the backend didn't report an id, detect it by difference from
+          // the ids we already knew before the refresh.
+          if (createdId == null) {
+            final conversations = state.conversations;
+            final newOnes =
+                conversations.where((c) => !knownIds.contains(c.id)).toList();
+            if (newOnes.length == 1) {
+              final created = newOnes.first;
+              state = state.copyWith(
+                currentConversationId: created.id,
+                messages: [
+                  ...state.messages.map(
+                    (m) => m.conversationId.isEmpty
+                        ? m.copyWith(conversationId: created.id)
+                        : m,
+                  ),
+                ],
+                clearPendingDocument: isFirstMessage,
+              );
+            } else {
+              state = state.copyWith(clearPendingDocument: isFirstMessage);
+            }
           }
         } else if (isFirstMessage) {
           // Mock mode: document bound on the first message too.

@@ -44,6 +44,14 @@ class ChatRemoteDataSource implements ChatDataSource {
   final String _baseUrl;
   final Duration _idleTimeout;
 
+  /// Conversation id received from the first SSE event of the last stream
+  /// (`data: {"conversation_id": N}`). Set when the backend created a new
+  /// conversation for a first message; null otherwise.
+  String? _lastConversationId;
+
+  @override
+  String? get lastConversationId => _lastConversationId;
+
   static const _timeout = Duration(seconds: 20);
   static const _streamTimeout = Duration(seconds: 60);
 
@@ -165,6 +173,9 @@ class ChatRemoteDataSource implements ChatDataSource {
       throw const SessionException('Sesi berakhir. Silakan login ulang.');
     }
 
+    // Reset any id from a previous stream.
+    _lastConversationId = null;
+
     try {
       final res = await _dio.post<ResponseBody>(
         '$_baseUrl/api/chat/stream',
@@ -200,6 +211,11 @@ class ChatRemoteDataSource implements ChatDataSource {
 
         final decoded = jsonDecode(payload);
         if (decoded is Map) {
+          // First event: the backend tells us the (new) conversation id.
+          final convId = decoded['conversation_id'];
+          if (convId != null) {
+            _lastConversationId = convId.toString();
+          }
           final delta = decoded['delta'];
           if (delta is String) {
             yield delta;

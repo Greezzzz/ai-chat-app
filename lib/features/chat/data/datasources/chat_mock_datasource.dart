@@ -26,6 +26,9 @@ class MockChatDataSource implements ChatDataSource {
   bool get persistsLocally => true;
 
   @override
+  String? get lastConversationId => null;
+
+  @override
   Future<List<Conversation>> getConversations() async {
     final userId = _currentUserId;
     final list = _db.conversations.values

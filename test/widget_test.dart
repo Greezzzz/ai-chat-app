@@ -139,6 +139,9 @@ class _RemoteFakeDataSource implements ChatDataSource {
   bool get persistsLocally => false;
 
   @override
+  String? get lastConversationId => null;
+
+  @override
   Future<List<Conversation>> getConversations() async => const [];
 
   @override
@@ -177,6 +180,20 @@ class _RemoteFakeDataSource implements ChatDataSource {
 class _RemoteFakeChatRepository implements ChatRepository {
   final _conversations = <Conversation>[];
   int _nextId = 1;
+
+  /// Seeds an existing conversation (as if it came from a previous session).
+  void seedConversation(String id, String title) {
+    _conversations.insert(
+      0,
+      Conversation(
+        id: id,
+        userId: 'user_001',
+        title: title,
+        createdAt: DateTime.now().subtract(const Duration(days: 1)),
+        updatedAt: DateTime.now().subtract(const Duration(days: 1)),
+      ),
+    );
+  }
 
   @override
   Future<List<Conversation>> getConversations() async =>
@@ -520,5 +537,45 @@ void main() {
     final chat = container.read(chatControllerProvider);
     expect(chat.currentConversationId, isNull);
     expect(find.text('Add context'), findsOneWidget);
+  });
+
+  testWidgets('First message does not jump to an older conversation',
+      (tester) async {
+    final fakeRepo = _RemoteFakeChatRepository()
+      // Pre-existing conversation that is OLDER than the one about to be
+      // created (backend would return it later in the list).
+      ..seedConversation('conv_old', 'Percakapan lama');
+
+    final container = await makeContainer(extraOverrides: [
+      chatRepositoryProvider.overrideWithValue(fakeRepo),
+      chatDataSourceProvider.overrideWith((ref) => _RemoteFakeDataSource()),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const ChatApp()),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.enterText(
+      find.byType(TextFormField).at(0),
+      'john_doe',
+    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'password123');
+    await tester.tap(find.text('Login'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Send the first message of a brand-new chat.
+    await sendMessageViaComposer(tester, 'Pertanyaan baru');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final chat = container.read(chatControllerProvider);
+    // The app must bind to the NEW conversation, not the old one.
+    expect(chat.currentConversationId, isNotNull);
+    expect(chat.currentConversationId, isNot('conv_old'));
+    expect(chat.conversations.length, 2);
   });
 }

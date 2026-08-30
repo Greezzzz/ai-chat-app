@@ -113,6 +113,7 @@ void main() {
   test('streams SSE deltas and stops at [DONE]', () async {
     final session = await _session();
     final dio = Dio()..httpClientAdapter = _FakeSseAdapter(
+      'data: {"conversation_id": 12}\n\n'
       'data: {"delta": "Halo, "}\n\n'
       'data: {"delta": "dunia"}\n\n'
       'data: {"delta": "!"}\n\n'
@@ -125,6 +126,32 @@ void main() {
       chunks.add(c);
     }
     expect(chunks.join(), 'Halo, dunia!');
+  });
+
+  test('captures conversation_id from the first SSE event', () async {
+    final session = await _session();
+    final dio = Dio()..httpClientAdapter = _FakeSseAdapter(
+      'data: {"conversation_id": 77}\n\n'
+      'data: {"delta": "hai"}\n\n'
+      'data: [DONE]\n\n',
+    );
+
+    final ds = ChatRemoteDataSource(session, dio: dio);
+    await ds.streamChat(conversationId: '', message: 'halo').toList();
+    expect(ds.lastConversationId, '77');
+  });
+
+  test('leaves lastConversationId null when the stream has no id event',
+      () async {
+    final session = await _session();
+    final dio = Dio()..httpClientAdapter = _FakeSseAdapter(
+      'data: {"delta": "hai"}\n\n'
+      'data: [DONE]\n\n',
+    );
+
+    final ds = ChatRemoteDataSource(session, dio: dio);
+    await ds.streamChat(conversationId: '12', message: 'halo').toList();
+    expect(ds.lastConversationId, isNull);
   });
 
   test('surfaces a mid-stream error event as NetworkException', () async {

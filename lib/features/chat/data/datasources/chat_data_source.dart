@@ -9,6 +9,11 @@ abstract interface class ChatDataSource {
   /// server-side, so the repository skips local writes.
   bool get persistsLocally;
 
+  /// Conversation id received from the backend during the last [streamChat]
+  /// (the SSE stream's first event). Null when the stream was for an existing
+  /// conversation or the source doesn't report one.
+  String? get lastConversationId;
+
   Future<List<Conversation>> getConversations();
 
   Future<Conversation?> getConversation(String id);
