@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../config/environment.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/debug/reset_local_data.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -141,7 +142,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: AppSpacing.md),
 
-                    if (kDebugMode)
+                    // Only useful in mock mode, where user data lives in
+                    // local Hive/session and stale data can lock the login.
+                    if (kDebugMode && AppEnvironment.isMock)
                       TextButton(
                         onPressed: _resetLocalData,
                         child: Text(
